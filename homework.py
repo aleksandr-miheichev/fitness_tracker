@@ -1,6 +1,6 @@
 """Модуль фитнес-трекера"""
 
-from dataclasses import dataclass, fields
+from dataclasses import asdict, dataclass, fields
 
 
 @dataclass()
@@ -11,21 +11,17 @@ class InfoMessage:
     distance: float
     speed: float
     calories: float
-    TRAINING_RESULTS = ('Тип тренировки: {0}; '
-                        'Длительность: {1:.3f} ч.; '
-                        'Дистанция: {2:.3f} км; '
-                        'Ср. скорость: {3:.3f} км/ч; '
-                        'Потрачено ккал: {4:.3f}.')
+    INFO = (
+        'Тип тренировки: {training_type}; '
+        'Длительность: {duration:.3f} ч.; '
+        'Дистанция: {distance:.3f} км; '
+        'Ср. скорость: {speed:.3f} км/ч; '
+        'Потрачено ккал: {calories:.3f}.'
+    )
 
     def get_message(self) -> str:
         """Возвращает информационное сообщение о выполненной тренировке."""
-        training_type = self.training_type
-        duration = self.duration
-        distance = self.distance
-        speed = self.speed
-        calories = self.calories
-        return self.TRAINING_RESULTS.format(training_type, duration, distance,
-                                            speed, calories)
+        return self.INFO.format(**asdict(self))
 
 
 @dataclass()
@@ -36,7 +32,7 @@ class Training:
     weight: float
     M_IN_KM = 1000
     LEN_STEP = 0.65
-    HOURS_IN_MIN = 60
+    MIN_IN_HOUR = 60
 
     def get_distance(self) -> float:
         """Получить дистанцию в км."""
@@ -52,40 +48,43 @@ class Training:
 
     def show_training_info(self) -> InfoMessage:
         """Создаёт объект сообщения о результатах тренировки."""
-        return InfoMessage(self.__class__.__name__, self.duration,
-                           self.get_distance(), self.get_mean_speed(),
-                           self.get_spent_calories())
+        return InfoMessage(
+            self.__class__.__name__,
+            self.duration,
+            self.get_distance(),
+            self.get_mean_speed(),
+            self.get_spent_calories()
+        )
 
 
 class Running(Training):
     """Тренировка: бег."""
-    MULTIPLIER_FOR_AVERAGE_SPEED = 18
-    SUBTRACTED_FOR_AVERAGE_SPEED = 20
+    SPEED_MULTIPLIER = 18
+    SPEED_SUBTRAHEND = 20
 
     def get_spent_calories(self) -> float:
         """Рассчитывает количество потраченных ккал за тренировку: бег."""
-        return ((self.MULTIPLIER_FOR_AVERAGE_SPEED * self.get_mean_speed()
-                 - self.SUBTRACTED_FOR_AVERAGE_SPEED)
-                * self.weight / self.M_IN_KM * self.duration
-                * self.HOURS_IN_MIN)
+        return ((self.SPEED_MULTIPLIER * self.get_mean_speed()
+                 - self.SPEED_SUBTRAHEND) * self.weight / self.M_IN_KM
+                * self.duration * self.MIN_IN_HOUR)
 
 
 @dataclass()
 class SportsWalking(Training):
     """Тренировка: спортивная ходьба."""
     height: int
-    MULTIPLIER_FOR_WEIGHT_1 = 0.035
-    MULTIPLIER_FOR_WEIGHT_2 = 0.029
+    WEIGHT_MULTIPLIER_1 = 0.035
+    WEIGHT_MULTIPLIER_2 = 0.029
 
     def get_spent_calories(self) -> float:
         """
         Рассчитывает количество потраченных ккал
         за тренировку: спортивная ходьба.
         """
-        return ((self.MULTIPLIER_FOR_WEIGHT_1 * self.weight
+        return ((self.WEIGHT_MULTIPLIER_1 * self.weight
                  + (self.get_mean_speed() ** 2 // self.height)
-                 * self.MULTIPLIER_FOR_WEIGHT_2 * self.weight)
-                * self.duration * self.HOURS_IN_MIN)
+                 * self.WEIGHT_MULTIPLIER_2 * self.weight) * self.duration
+                * self.MIN_IN_HOUR)
 
 
 @dataclass()
@@ -94,8 +93,8 @@ class Swimming(Training):
     length_pool: float
     count_pool: int
     LEN_STEP = 1.38
-    TERM_FOR_AVERAGE_SPEED = 1.1
-    MULTIPLIER_FOR_AVERAGE_SPEED = 2
+    SPEED_TERM = 1.1
+    SPEED_MULTIPLIER = 2
 
     def get_mean_speed(self) -> float:
         """Рассчитывает среднюю сокрость при тренировки: плавание."""
@@ -104,26 +103,39 @@ class Swimming(Training):
 
     def get_spent_calories(self) -> float:
         """Рассчитывает количество потраченных ккал за тренировку: плавание."""
-        return ((self.get_mean_speed() + self.TERM_FOR_AVERAGE_SPEED)
-                * self.MULTIPLIER_FOR_AVERAGE_SPEED * self.weight)
+        return ((self.get_mean_speed() + self.SPEED_TERM)
+                * self.SPEED_MULTIPLIER * self.weight)
+
+
+WORKOUT_FAIL = (
+    '{} - не подходящий тип тренировки. Выберите, пожалуйста, корректный тип '
+    'тренировки.'
+)
+
+DATA_FAIL = (
+    'У типа тренировки {} необходимое количество параметров тренировки'
+    ' равно {}, но сейчас поступают данные только от {}, поэтому проверьте,'
+    ' пожалуйста, работу датчиков.'
+)
+
+DATA_MATCHING = {
+    'SWM': (Swimming, len(fields(Swimming))),
+    'RUN': (Running, len(fields(Running))),
+    'WLK': (SportsWalking, len(fields(SportsWalking)))
+}
 
 
 def read_package(workout_type: str, data: list) -> Training:
     """Прочитать данные полученные от датчиков."""
-    workout_type_check = ('{} - не подходящий тип тренировки. Выберите, '
-                          'пожалуйста, корректный тип тренировки.')
-    checking_the_number_of_training_parameters = ('{} - недостаточное '
-                                                  'количество принимаемых '
-                                                  'параметров тренировки. '
-                                                  'Проверьте, пожалуйста, '
-                                                  'работу датчиков.')
-    dictionary = dict([('SWM', Swimming), ('RUN', Running),
-                       ('WLK', SportsWalking)])
-    if workout_type not in dictionary.keys():
-        print(workout_type_check.format(workout_type))
-    if len(data) != len(fields(dictionary[workout_type])):
-        print(checking_the_number_of_training_parameters.format(len(data)))
-    return dictionary[workout_type](*data)
+    if workout_type not in DATA_MATCHING:
+        raise KeyError(WORKOUT_FAIL.format(workout_type))
+    if len(data) not in DATA_MATCHING[workout_type]:
+        raise TypeError(DATA_FAIL.format(
+            DATA_MATCHING[workout_type][0].__name__,
+            DATA_MATCHING[workout_type][1],
+            len(data))
+        )
+    return DATA_MATCHING[workout_type][0](*data)
 
 
 def main(training: Training) -> None:
@@ -132,8 +144,8 @@ def main(training: Training) -> None:
 
 
 if __name__ == '__main__':
-    packages: list = [
-        ('SWM', [720, 80, 1, 25, 40]),
+    packages = [
+        ('SWM', [720, 1, 80, 25, 40]),
         ('RUN', [15000, 1, 75]),
         ('WLK', [9000, 1, 75, 180]),
     ]
